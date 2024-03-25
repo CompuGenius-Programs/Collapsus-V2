@@ -1,68 +1,27 @@
-import io
 import json
-import math
 import os
 import random
 from asyncio import sleep
 
-import aiohttp
 import discord
 import dotenv
 import emoji
-from PIL import Image
 from discord import Option
-from discord.ext.pages import Paginator, Page as _Page
-from parsel import Selector
 from titlecase import titlecase
 
 import parsers
+from commands.core import help_function
+from commands.grotto import grotto_command, translate_grotto
+from commands.songs import song, play
+from utils import create_embed, guild_id, stream_channel, quests_channel, clean_text, dev_tag, krak_pop_image_url, \
+    item_images_url, weapon_images_url, armor_images_url, accessory_images_url, shields_images_url, int_from_string, \
+    monster_images_url, create_paginator, character_image_url, rules_channel_en, rules_channel_fr, rules_channel_de, \
+    rules_channel_jp, welcome_channel, role_en, role_fr, role_de, role_jp, role_celestrian
 
 dotenv.load_dotenv()
 token = os.getenv("TOKEN")
 
 bot = discord.Bot(intents=discord.Intents.all())
-
-dev_id = 496392770374860811
-dev_tag = "@CompuGeniusPrograms"
-dev_paypal = "paypal.me/cgprograms | venmo.com/CompuGeniusCode"
-
-guild_id = 655390550698098700
-testing_channel = 973619817317797919
-
-quests_channel = 766039065849495574
-
-welcome_channel = 965688638295924766
-rules_channel_en = 688480621856686196
-rules_channel_fr = 965694046049800222
-rules_channel_de = 965693961907875850
-rules_channel_jp = 965693827568529448
-
-role_en = 879436700256964700
-role_fr = 965696709290262588
-role_de = 965696853951795221
-role_jp = 859563030220374057
-role_celestrian = 655438935278878720
-
-grotto_bot_channel = 845339551173050389
-
-stream_channel = 655390551138631704
-
-logo_url = "https://cdn.discordapp.com/emojis/856330729528361000.png"
-website_url = "https://dq9.carrd.co"
-server_invite_url = "https://discord.gg/DQ9"
-
-grotto_search_url = "https://www.yabd.org/apps/dq9/grottosearch.php"
-
-character_image_url = "https://www.woodus.com/den/games/dq9ds/characreate/index.php?"
-
-monster_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/monster/%s.webp"
-
-krak_pop_image_url = "https://cdn.discordapp.com/attachments/698157074420334612/982389321506099300/unknown.png"
-item_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/item/%s.png"
-weapon_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/weapon/%s.png"
-armor_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/armor/%s.png"
-shields_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/shield/%s.png"
-accessory_images_url = "https://www.woodus.com/den/gallery/graphics/dq9ds/accessory/%s.png"
 
 
 @bot.event
@@ -78,27 +37,7 @@ async def on_ready():
 
 @bot.command(name="help", description="Get help for using the bot.")
 async def _help(ctx):
-    description = '''
-A bot created by <@%s> for The Quester's Rest (<%s>).
-
-**/character** - *Generate a random character*
-**/gg** - *Get grotto info (location required)*
-**/grotto** - *Get grotto info*
-**/monster** - *Get monster info*
-**/quest** - *Get quest info*
-**/recipe** - *Get an item's recipe*
-**/song** - *Play a song*
-**/songs_all** - *Play all songs*
-**/stop** - *Stop playing songs*
-**/translate** - *Translate a word or phrase*
-**/grotto_translate(\_[language])** - *Translate a grotto name*
-
-**/help** - *Displays this message*
-''' % (dev_id, server_invite_url)
-
-    embed = create_embed("Collapsus v2 Help [Click For Server Website]", description=description, error="",
-                         image=logo_url, url=website_url)
-    await ctx.respond(embed=embed)
+    await ctx.respond(embed=help_function())
 
 
 @bot.command(name="migrate_resources")
@@ -396,40 +335,7 @@ async def get_songs(ctx: discord.AutocompleteContext):
 
 @bot.command(name="song", description="Plays a song.")
 async def _song(ctx, song_name: Option(str, "Song Name", autocomplete=get_songs, required=True)):
-    voice_client = discord.utils.get(bot.voice_clients, guild=bot.get_guild(guild_id))
-    if voice_client is None or not voice_client.is_playing():
-        voice_state = ctx.author.voice
-        if voice_state is None:
-            embed = create_embed("You need to be in a voice channel to use this command.")
-            return await ctx.respond(embed=embed, ephemeral=True)
-
-        channel = voice_state.channel.id
-        if channel == stream_channel:
-            embed = create_embed("You can't use this command in the stream channel.")
-            return await ctx.respond(embed=embed, ephemeral=True)
-
-        await ctx.defer()
-
-        with open("data/songs.json", "r", encoding="utf-8") as fp:
-            data = json.load(fp)
-        songs = data["songs"]
-
-        index = next(filter(lambda s: s["title"].lower() == song_name.lower(), songs), None)
-        song = parsers.Song.from_dict(index)
-
-        if voice_client is None:
-            voice_client = await bot.get_channel(channel).connect()
-        await play(ctx, voice_client, song, channel)
-
-        embed = create_embed("Playing `%s` in <#%s>" % (song.title, channel))
-        await ctx.followup.send(embed=embed)
-
-        while voice_client.is_playing():
-            await sleep(1)
-        await voice_client.disconnect()
-    else:
-        embed = create_embed("I'm already playing a song. Please wait until it's finished.")
-        return await ctx.respond(embed=embed, ephemeral=True)
+    await song(ctx, song_name)
 
 
 @bot.command(name="songs_all", description="Plays all songs.")
@@ -488,12 +394,6 @@ async def _stop_song(ctx):
 
     embed = create_embed("Stopped playing.")
     await ctx.respond(embed=embed)
-
-
-async def play(ctx, voice_client, song: parsers.Song, channel):
-    if voice_client.is_connected():
-        source = discord.FFmpegPCMAudio(song.url, executable="ffmpeg")
-        voice_client.play(source)
 
 
 @bot.command(name="parse_quests", description="Parses the quests.")
@@ -953,153 +853,6 @@ async def _grotto_location(ctx,
     await grotto_command(ctx, material, environment, suffix, level, location)
 
 
-async def grotto_command(ctx, material, environment, suffix, level, location):
-    if not ctx.response.is_done():
-        await ctx.defer()
-
-    embeds, files = await grotto_func(material, environment, suffix, level, location)
-
-    if len(embeds) > 1:
-        paginator = create_paginator(embeds, files)
-        await paginator.respond(ctx.interaction)
-    else:
-        if len(embeds) == 1:
-            embed = embeds[0]
-            fs = [file["file"] for file in files if file["id"] == 0]
-            file_name = "collages/collage0.png"
-            create_collage(fs, file_name)
-            with open(file_name, 'rb') as fp:
-                data = io.BytesIO(fp.read())
-            file = discord.File(data, file_name.removeprefix("collages/"))
-            embed.set_image(url="attachment://%s" % file_name.removeprefix("collages/"))
-        else:
-            embed = create_embed("No grotto found. Please check parameters and try again.")
-            file = None
-
-        if file is not None:
-            await ctx.followup.send(embed=embed, file=file)
-        else:
-            await ctx.followup.send(embed=embed)
-
-
-async def grotto_func(material, environment, suffix, level, location):
-    async with aiohttp.ClientSession() as session:
-        params = {
-            "search": "Search",
-            "prefix": str(parsers.grotto_prefixes.index(titlecase(material)) + 1),
-            "envname": str(parsers.grotto_environments.index(titlecase(environment)) + 1),
-            "suffix": str(parsers.grotto_suffixes.index(suffix) + 1),
-            "level": str(level),
-        }
-
-        if location is not None:
-            try:
-                params["loc"] = str(int(location, base=16))
-            except ValueError:
-                pass
-
-        async with session.get(grotto_search_url, params=params) as response:
-            text = await response.text()
-            selector = Selector(text=text)
-            divs = selector.xpath('//div[@class="inner"]//text()')
-            grottos = divs.getall()
-
-            embeds = []
-            files = []
-
-            for parsed in parsers.create_grotto(grottos):
-                special = parsers.is_special(parsed)
-                color = discord.Color.gold() if special else discord.Color.green()
-                embed = create_embed(None, color=color)
-
-                if special:
-                    parsed = parsed[1:]
-
-                zipped = zip(range(len(parsed)), parsers.grotto_keys, parsed)
-
-                for i, key, value in zipped:
-                    if key == "Name":
-                        if special:
-                            value = ":star: %s :star:" % value
-                        embed.title = "%s\n[Click For Full Info]" % value
-                    else:
-                        if key == "Seed":
-                            value = str(value).zfill(4)
-                        if key == "Chests":
-                            values = [str(x) for x in parsed[i:i + 10]]
-                            chests = list(zip(parsers.grotto_ranks, values))
-                            value = ", ".join([': '.join(x) for x in chests])
-                        if key == "Locations":
-                            values = [str(x).zfill(2) for x in parsed[i + 9:]]
-                            for v in values:
-                                files.append({"id": len(embeds), "file": "grotto_images/%s.png" % v})
-                            value = ', '.join(values)
-                        embed.add_field(name=key, value=value, inline=False)
-                embed.url = str(response.url)
-                embeds.append(embed)
-
-        return embeds, files
-
-
-async def translate_grotto(material, environment, suffix, language_input, language_output):
-    with open("data/grottos_translated.json", "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-
-    translations = data["translations"]
-
-    translation = parsers.Translation
-
-    translation_english = []
-    translation_japanese = []
-    translation_spanish = []
-    translation_french = []
-    translation_german = []
-    translation_italian = []
-
-    phrases = [material, environment, suffix]
-    for p in phrases:
-        index = next(filter(lambda r: r[language_input].lower() == p.lower(), translations), None)
-
-        translation = parsers.Translation.from_dict(index)
-
-        translation_english.append(translation.english)
-        translation_japanese.append(translation.japanese)
-        translation_spanish.append(translation.spanish)
-        translation_french.append(translation.french)
-        translation_german.append(translation.german)
-        translation_italian.append(translation.italian)
-
-    translation.english = "%s %s %s" % (translation_english[0], translation_english[1], translation_english[2])
-    translation.japanese = "%s%s%s" % (translation_japanese[0], translation_japanese[2], translation_japanese[1])
-    translation.spanish = "%s %s %s" % (translation_spanish[1], translation_spanish[0], translation_spanish[2])
-    translation.french = "%s %s %s" % (translation_french[1], translation_french[0], translation_french[2])
-    translation.german = "%s%s %s" % (translation_german[0], translation_german[1], translation_german[2])
-    translation.italian = "%s %s %s" % (translation_italian[1], translation_italian[0], translation_italian[2])
-
-    all_languages = [
-        translation.english,
-        translation.japanese,
-        translation.spanish,
-        translation.french,
-        translation.german,
-        translation.italian
-    ]
-
-    title = "Translation of: %s" % titlecase(all_languages[parsers.translation_languages_simple.index(language_input)])
-    color = discord.Color.green()
-    embed = create_embed(title, color=color, error="Any errors? Want to contribute? Please speak to %s" % dev_tag)
-    if language_output is not None:
-        value = all_languages[parsers.translation_languages.index(language_output)]
-        if value != "":
-            embed.add_field(name=language_output, value=value, inline=False)
-    else:
-        for language, translation in zip(parsers.translation_languages, all_languages):
-            if translation != "":
-                embed.add_field(name=language, value=translation, inline=False)
-
-    return embed, translation_english[0], translation_english[1], translation_english[2]
-
-
 @bot.event
 async def on_raw_reaction_add(payload):
     emoji_name = emoji.demojize(payload.emoji.name)
@@ -1165,84 +918,6 @@ async def on_voice_state_update(member, before, after):
     if len(music_voice_channel.members) <= 1:
         if voice_client and voice_client.is_connected():
             await voice_client.disconnect()
-
-
-def int_from_string(string):
-    integer = ''.join(filter(str.isdigit, string))
-    if integer != "":
-        return int(integer)
-    else:
-        return ""
-
-
-def clean_text(text, remove_spaces=True, url=False):
-    text = text.lower().replace("'", "").replace("’", "").replace("ñ", "n").replace("ó", "o").replace(
-        ".", "")
-    text = text.replace("-", "_") if url else text.replace("-", "")
-    if remove_spaces:
-        text = text.replace(" ", "")
-    else:
-        text = text.replace(" ", "_")
-
-    return text
-
-
-class Page(_Page):
-    def update_files(self) -> list[discord.File] | None:
-        """Updates :class:`discord.File` objects so that they can be sent multiple
-        times. This is called internally each time the page is sent.
-        """
-        for file in self._files:
-            if file.fp.closed and (fn := getattr(file.fp, "name", None)):
-                file.fp = open(fn, "rb")
-            file.reset()
-            file.fp.close = lambda: None
-        return self._files
-
-
-def create_paginator(embeds, files):
-    pages = []
-    for entry in embeds:
-        if files is None:
-            page = Page(embeds=[entry])
-        else:
-            fs = [file["file"] for file in files if file["id"] == embeds.index(entry)]
-            file_name = "collages/collage%s.png" % embeds.index(entry)
-            create_collage(fs, file_name)
-            with open(file_name, 'rb') as fp:
-                data = io.BytesIO(fp.read())
-            file = discord.File(data, file_name.removeprefix("collages/"))
-            entry.set_image(url="attachment://%s" % file_name.removeprefix("collages/"))
-            page = Page(embeds=[entry], files=[file])
-        pages.append(page)
-    return Paginator(pages=pages)
-
-
-def create_collage(files, file_name):
-    columns = math.ceil(math.sqrt(len(files)))
-    rows = math.ceil(len(files) / columns)
-    collage = Image.new("RGBA", (128 * columns, 96 * rows))
-    index = 0
-    for row in range(rows):
-        for col in range(columns):
-            if index < len(files):
-                image = Image.open(files[index])
-                collage.paste(image, (128 * col, 96 * row))
-                index += 1
-
-    collage.save(file_name)
-
-
-def create_embed(title, description=None, color=discord.Color.green(),
-                 footer="Consider supporting the developer at %s" % dev_paypal,
-                 error="Any errors? Please report to %s" % dev_tag,
-                 image="", *, url="", author=""):
-    embed = discord.Embed(title=title, description=description, url=url, color=color)
-    embed.set_footer(text="%s\n%s" % (footer, error))
-    if image != "":
-        embed.set_image(url=image)
-    embed.set_author(name=author)
-    return embed
 
 
 bot.run(token)
